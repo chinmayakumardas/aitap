@@ -11,7 +11,7 @@ export default function ResponsiveHomepage() {
 
   return (
     <div className="relative min-h-screen w-full bg-black text-white">
-      <Preloader />
+      {/* <Preloader /> */}
 
       {/* Background */}
       <div

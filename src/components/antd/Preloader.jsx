@@ -30,7 +30,7 @@ const Preloader = () => {
   return (
     <div className="preloader-container fixed inset-0 z-[9999] flex items-center justify-center bg-black text-white">
       <h1 className="preloader-text text-3xl md:text-5xl font-extrabold tracking-wide">
-        AAS-infotech AdminHub
+         AdminHub
       </h1>
     </div>
   );

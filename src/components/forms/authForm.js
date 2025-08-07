@@ -1,107 +1,342 @@
+
+
+
 "use client";
 
-import React, { useState } from 'react';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Eye, EyeOff, User, Lock } from 'lucide-react';
-import { toast } from 'react-toastify';
+import React, { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
+import { useDispatch, useSelector } from "react-redux";
+import { login, sendOtp, verifyOtp, resetPassword } from "@/store/features/authSlice";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
+import { toast } from "react-toastify";
+import { Mail, Lock, ShieldCheck, CornerUpLeft, Key, Eye, EyeOff } from "lucide-react";
 
-export default function AuthForm({ onClose }) {
+export default function AuthForm() {
+  const router = useRouter();
+  const dispatch = useDispatch();
+  const { loading, error, otpSent } = useSelector((state) => state.auth);
+  const [mode, setMode] = useState("login"); // login or reset
+  const [step, setStep] = useState("credentials"); // credentials, otp, or resetPassword
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [otp, setOtp] = useState(Array(6).fill(""));
   const [showPassword, setShowPassword] = useState(false);
-  const [loginData, setLoginData] = useState({ email: '', password: '' });
-  const [isLoading, setIsLoading] = useState(false);
+  const [showNewPassword, setShowNewPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
+  // Sanitization function
+  const sanitizeInput = (input) => {
+    return input.replace(/[<>{}]/g, "").trim();
+  };
+
+  // Validation functions
+  const validateEmail = (email) => {
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    return emailRegex.test(email);
+  };
+
+  const validatePassword = (password) => {
+    return password.length >= 6 && /[A-Za-z]/.test(password) && /\d/.test(password);
+  };
+
+  // Handle login submission
   const handleLogin = async () => {
-    setIsLoading(true);
-    await new Promise(resolve => setTimeout(resolve, 1500));
-    console.log('Login attempt:', loginData);
-    toast.success('Logged in successfully!')
-    setIsLoading(false);
-    if (onClose) onClose();
+    const sanitizedEmail = sanitizeInput(email);
+    const sanitizedPassword = sanitizeInput(password);
+
+    if (!validateEmail(sanitizedEmail)) {
+      toast.error("invalid email");
+      return;
+    }
+    if (!validatePassword(sanitizedPassword)) {
+      toast.error("invalid password");
+      return;
+    }
+
+    try {
+      await dispatch(login({ email: sanitizedEmail, password: sanitizedPassword })).unwrap();
+      toast.success("send");
+      setStep("otp");
+    } catch (err) {
+      toast.error("login failed");
+    }
   };
 
-  const handleInputChange = (e) => {
-    const { name, value } = e.target;
-    setLoginData(prev => ({ ...prev, [name]: value }));
+  // Handle OTP verification
+  const handleVerifyOtp = async () => {
+    const code = otp.join("");
+    if (code.length !== 6 || !/^\d{6}$/.test(code)) {
+      toast.error("invalid otp");
+      return;
+    }
+
+    try {
+      await dispatch(verifyOtp({ email, otp: code })).unwrap();
+      if (mode === "login") {
+        toast.success("login success");
+        router.push("/dashboard");
+      } else {
+        toast.success("otp verified");
+        setStep("resetPassword");
+      }
+    } catch (err) {
+      toast.error("otp failed");
+    }
   };
+
+  // Handle password reset request
+  const handleResetPasswordRequest = async () => {
+    const sanitizedEmail = sanitizeInput(email);
+    if (!validateEmail(sanitizedEmail)) {
+      toast.error("invalid email");
+      return;
+    }
+
+    try {
+      await dispatch(sendOtp(sanitizedEmail)).unwrap();
+      toast.success("send");
+      setStep("otp");
+    } catch (err) {
+      toast.error("otp send failed");
+    }
+  };
+
+  // Handle password reset submission
+  const handleResetPassword = async () => {
+    const code = otp.join("");
+    if (code.length !== 6 || !/^\d{6}$/.test(code)) {
+      toast.error("invalid otp");
+      return;
+    }
+
+    const sanitizedNewPassword = sanitizeInput(newPassword);
+    const sanitizedConfirmPassword = sanitizeInput(confirmPassword);
+
+    if (!validatePassword(sanitizedNewPassword)) {
+      toast.error("invalid password");
+      return;
+    }
+    if (sanitizedNewPassword !== sanitizedConfirmPassword) {
+      toast.error("passwords mismatch");
+      return;
+    }
+
+    try {
+      await dispatch(resetPassword({ email, password: sanitizedNewPassword, otp: code })).unwrap();
+      toast.success("password reset");
+      setMode("login");
+      setStep("credentials");
+      setNewPassword("");
+      setConfirmPassword("");
+      setOtp(Array(6).fill(""));
+    } catch (err) {
+      toast.error("reset failed");
+    }
+  };
+
+  // Handle OTP resend
+  const handleResend = async () => {
+    setOtp(Array(6).fill(""));
+    try {
+      await dispatch(sendOtp(email)).unwrap();
+      toast.success("send");
+    } catch (err) {
+      toast.error("resend failed");
+    }
+  };
+
+  // Handle OTP input change
+  const handleOtpChange = (index, value) => {
+    if (/^\d?$/.test(value)) {
+      const newOtp = [...otp];
+      newOtp[index] = value;
+      setOtp(newOtp);
+      if (value && index < 5) {
+        document.getElementById(`otp-${index + 1}`).focus();
+      }
+    }
+  };
+
+  // Display errors from Redux
+  useEffect(() => {
+    if (error) {
+      toast.error(error);
+    }
+  }, [error]);
 
   return (
-    <div className="w-full max-w-md p-6 bg-white rounded-xl shadow-md">
-      <div className="text-center mb-6">
-        <h2 className="text-2xl font-semibold text-gray-900">Welcome Back</h2>
-        <p className="text-sm text-gray-600">Sign in to your account</p>
-      </div>
-
-      <div className="space-y-5">
-        <div>
-          <Label htmlFor="email">Email</Label>
-          <div className="relative">
-            <User className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+    <Card className="w-full max-w-md p-8 bg-gradient-to-br from-gray-50 to-teal-100 rounded-xl shadow-lg border border-teal-200">
+      {step === "credentials" && (
+        <div className="flex flex-col gap-5">
+          <h2 className="text-3xl font-bold text-center text-teal-800">
+            {mode === "login" ? "Sign In" : "Reset Password"}
+          </h2>
+          <div className="flex items-center border border-teal-400 rounded-lg px-3 py-2 bg-white">
+            <Mail className="text-teal-700 mr-2" size={20} strokeWidth={2.5} />
             <Input
-              id="email"
-              name="email"
+              placeholder="Email address"
+              value={email}
+              onChange={(e) => setEmail(sanitizeInput(e.target.value))}
               type="email"
-              placeholder="you@example.com"
-              value={loginData.email}
-              onChange={handleInputChange}
-              className="pl-10"
-              required
+              className="border-none bg-transparent focus:ring-0 text-gray-900 placeholder-gray-400 text-sm cursor-pointer"
             />
           </div>
+          {mode === "login" && (
+            <div className="flex items-center border border-teal-400 rounded-lg px-3 py-2 bg-white">
+              <Lock className="text-teal-700 mr-2" size={20} strokeWidth={2.5} />
+              <Input
+                placeholder="Password"
+                value={password}
+                onChange={(e) => setPassword(sanitizeInput(e.target.value))}
+                type={showPassword ? "text" : "password"}
+                className="border-none bg-transparent focus:ring-0 text-gray-900 placeholder-gray-400 text-sm cursor-pointer"
+              />
+              <button
+                onClick={() => setShowPassword(!showPassword)}
+                className="ml-2 cursor-pointer"
+              >
+                {showPassword ? (
+                  <EyeOff className="text-teal-700" size={20} strokeWidth={2.5} />
+                ) : (
+                  <Eye className="text-teal-700" size={20} strokeWidth={2.5} />
+                )}
+              </button>
+            </div>
+          )}
+          <Button
+            onClick={mode === "login" ? handleLogin : handleResetPasswordRequest}
+            disabled={loading}
+            className="bg-teal-700 text-white font-semibold py-2 rounded-lg text-sm cursor-pointer"
+          >
+            {loading
+              ? mode === "login"
+                ? "Validating..."
+                : "Requesting OTP..."
+              : mode === "login"
+              ? "Sign In"
+              : "Send OTP"}
+          </Button>
+          <Button
+            variant="ghost"
+            onClick={() => setMode(mode === "login" ? "reset" : "login")}
+            className="text-teal-800 font-medium text-sm rounded-lg cursor-pointer"
+          >
+            {mode === "login" ? "Forgot Password?" : "Back to Sign In"}
+          </Button>
         </div>
+      )}
 
-        <div>
-          <Label htmlFor="password">Password</Label>
-          <div className="relative">
-            <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+      {step === "otp" && (
+        <div className="flex flex-col gap-5">
+          <div className="text-center">
+            <ShieldCheck className="mx-auto text-teal-700 h-10 w-10" strokeWidth={2.5} />
+            <h2 className="text-3xl font-bold text-teal-800">Verify OTP</h2>
+            <p className="text-sm text-gray-600">Sent to {email}</p>
+          </div>
+          <div className="flex justify-center gap-2">
+            {otp.map((digit, i) => (
+              <Input
+                key={i}
+                id={`otp-${i}`}
+                maxLength={1}
+                value={digit}
+                onChange={(e) => handleOtpChange(i, e.target.value)}
+                className="w-12 h-12 text-center text-lg font-semibold border border-teal-400 rounded-lg bg-white text-gray-900 cursor-pointer"
+                type="text"
+                inputMode="numeric"
+              />
+            ))}
+          </div>
+          <Button
+            onClick={handleVerifyOtp}
+            disabled={loading}
+            className="bg-teal-700 text-white font-semibold py-2 rounded-lg text-sm cursor-pointer"
+          >
+            {loading ? "Verifying..." : "Verify OTP"}
+          </Button>
+          <Button
+            variant="outline"
+            onClick={handleResend}
+            disabled={loading}
+            className="border border-teal-700 text-teal-700 font-semibold rounded-lg text-sm cursor-pointer"
+          >
+            Resend OTP
+          </Button>
+          <Button
+            variant="ghost"
+            onClick={() => setStep("credentials")}
+            className="flex items-center justify-center gap-2 text-sm text-teal-800 font-medium rounded-lg cursor-pointer"
+          >
+            <CornerUpLeft className="h-4 w-4" strokeWidth={2.5} /> Back to {mode === "login" ? "Sign In" : "Reset"}
+          </Button>
+        </div>
+      )}
+
+      {step === "resetPassword" && (
+        <div className="flex flex-col gap-5">
+          <h2 className="text-3xl font-bold text-center text-teal-800">
+            Set New Password
+          </h2>
+          <div className="flex items-center border border-teal-400 rounded-lg px-3 py-2 bg-white">
+            <Key className="text-teal-700 mr-2" size={20} strokeWidth={2.5} />
             <Input
-              id="password"
-              name="password"
-              type={showPassword ? 'text' : 'password'}
-              placeholder="••••••••"
-              value={loginData.password}
-              onChange={handleInputChange}
-              className="pl-10 pr-10"
-              required
+              placeholder="New password"
+              value={newPassword}
+              onChange={(e) => setNewPassword(sanitizeInput(e.target.value))}
+              type={showNewPassword ? "text" : "password"}
+              className="border-none bg-transparent focus:ring-0 text-gray-900 placeholder-gray-400 text-sm cursor-pointer"
             />
             <button
-              type="button"
-              onClick={() => setShowPassword(!showPassword)}
-              className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+              onClick={() => setShowNewPassword(!showNewPassword)}
+              className="ml-2 cursor-pointer"
             >
-              {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+              {showNewPassword ? (
+                <EyeOff className="text-teal-700" size={20} strokeWidth={2.5} />
+              ) : (
+                <Eye className="text-teal-700" size={20} strokeWidth={2.5} />
+              )}
             </button>
           </div>
-        </div>
-
-        <div className="flex items-center justify-between">
-          <div className="flex items-center space-x-2">
-            <input id="remember" type="checkbox" className="h-4 w-4" />
-            <Label htmlFor="remember" className="text-sm">Remember me</Label>
+          <div className="flex items-center border border-teal-400 rounded-lg px-3 py-2 bg-white">
+            <Key className="text-teal-700 mr-2" size={20} strokeWidth={2.5} />
+            <Input
+              placeholder="Confirm new password"
+              value={confirmPassword}
+              onChange={(e) => setConfirmPassword(sanitizeInput(e.target.value))}
+              type={showConfirmPassword ? "text" : "password"}
+              className="border-none bg-transparent focus:ring-0 text-gray-900 placeholder-gray-400 text-sm cursor-pointer"
+            />
+            <button
+              onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+              className="ml-2 cursor-pointer"
+            >
+              {showConfirmPassword ? (
+                <EyeOff className="text-teal-700" size={20} strokeWidth={2.5} />
+              ) : (
+                <Eye className="text-teal-700" size={20} strokeWidth={2.5} />
+              )}
+            </button>
           </div>
-          <a href="#" className="text-sm text-black hover:underline">Forgot password?</a>
+          <Button
+            onClick={handleResetPassword}
+            disabled={loading}
+            className="bg-teal-700 text-white font-semibold py-2 rounded-lg text-sm cursor-pointer"
+          >
+            {loading ? "Resetting..." : "Reset Password"}
+          </Button>
+          <Button
+            variant="ghost"
+            onClick={() => setStep("otp")}
+            className="flex items-center justify-center gap-2 text-sm text-teal-800 font-medium rounded-lg cursor-pointer"
+          >
+            <CornerUpLeft className="h-4 w-4" strokeWidth={2.5} /> Back to OTP
+          </Button>
         </div>
-
-        <Button
-          onClick={handleLogin}
-          disabled={isLoading || !loginData.email || !loginData.password}
-          className="w-full h-12"
-        >
-          {isLoading ? (
-            <div className="flex items-center gap-2">
-              <div className="h-4 w-4 animate-spin border-2 border-white/40 border-t-white rounded-full"></div>
-              <span>Signing in...</span>
-            </div>
-          ) : (
-            'Sign In'
-          )}
-        </Button>
-
-        <p className="text-center text-sm text-gray-600">
-          Don’t have an account? <a href="#" className="text-black font-medium hover:underline">Sign up</a>
-        </p>
-      </div>
-    </div>
+      )}
+    </Card>
   );
 }
